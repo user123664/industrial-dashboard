@@ -67,6 +67,8 @@ npm run dev
 ### 方式二：预览版（无需安装）
 
 直接用浏览器打开 `preview/index.html` 即可。
+![Uploading image.png…]()
+
 
 ## 简历描述参考
 
