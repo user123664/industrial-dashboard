@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>智能制造产线监控大屏 - 预览版</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/element-plus@2.6.0/dist/index.css">
+  <style>
+    :root {
+      --bg-deep: #0a0a0a;
+      --bg-panel: #141414;
+      --bg-panel-light: #1c1c1c;
+      --border-color: rgba(255, 107, 0, 0.25);
+      --border-active: rgba(255, 107, 0, 0.6);
+      --orange: #FF6B00;
+      --orange-light: #FF9A3D;
+      --orange-soft: rgba(255, 107, 0, 0.15);
+      --text-primary: #FFFFFF;
+      --text-secondary: #CCCCCC;
+      --text-muted: #777777;
+      --status-running: #00FF88;
+      --status-idle: #FFD700;
+      --status-warning: #FF9A00;
+      --status-error: #FF3333;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: var(--bg-deep); color: var(--text-primary);
+      font-family: 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif;
+    }
+    #app {
+      width: 1920px; height: 1080px;
+      background: var(--bg-deep); overflow: hidden;
+      transform-origin: top left;
+    }
+    .panel {
+      background: var(--bg-panel); border: 1px solid var(--border-color);
+      border-radius: 4px; position: relative; overflow: hidden;
+    }
+    .panel::before {
+      content: ''; position: absolute; top: 0; left: 0;
+      width: 100%; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--orange), transparent);
+      opacity: 0.6;
+    }
+    .panel-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 16px; border-bottom: 1px solid var(--border-color);
+    }
+    .panel-title { font-size: 15px; font-weight: 600; color: var(--orange); letter-spacing: 1px; }
+    .panel-body { padding: 12px 16px; height: calc(100% - 42px); }
+    .corner-tl, .corner-tr, .corner-bl, .corner-br {
+      position: absolute; width: 12px; height: 12px;
+      border-color: var(--orange); border-style: solid; border-width: 0;
+    }
+    .corner-tl { top: -1px; left: -1px; border-top-width: 2px; border-left-width: 2px; }
+    .corner-tr { top: -1px; right: -1px; border-top-width: 2px; border-right-width: 2px; }
+    .corner-bl { bottom: -1px; left: -1px; border-bottom-width: 2px; border-left-width: 2px; }
+    .corner-br { bottom: -1px; right: -1px; border-bottom-width: 2px; border-right-width: 2px; }
+    .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .status-dot.running { background: var(--status-running); box-shadow: 0 0 6px var(--status-running); }
+    .status-dot.idle { background: var(--status-idle); }
+    .status-dot.warning { background: var(--status-warning); box-shadow: 0 0 6px var(--status-warning); }
+    .status-dot.error { background: var(--status-error); box-shadow: 0 0 8px var(--status-error); }
+    @keyframes blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0.3; } }
+    .blink { animation: blink 1s infinite; }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--orange-soft); border-radius: 2px; }
+    .num-orange { color: var(--orange); font-family: 'DIN', 'Arial', sans-serif; font-weight: 700; }
+    .num-green { color: var(--status-running); }
+    .num-red { color: var(--status-error); }
+    .num-yellow { color: var(--status-idle); }
+
+    .dashboard { width: 1920px; height: 1080px; display: flex; flex-direction: column; background: var(--bg-deep); }
+    .dashboard-body { flex: 1; display: flex; gap: 12px; padding: 0 12px 12px; overflow: hidden; }
+    .col-left { width: 420px; display: flex; flex-direction: column; gap: 12px; }
+    .col-center { flex: 1; display: flex; flex-direction: column; gap: 12px; }
+    .col-right { width: 420px; display: flex; flex-direction: column; gap: 12px; }
+    .flex-1 { flex: 1; } .flex-2 { flex: 2; }
+
+    .header { height: 80px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; position: relative; background: linear-gradient(180deg, rgba(255,107,0,0.08) 0%, transparent 100%); border-bottom: 1px solid var(--border-color); }
+    .header::after { content: ''; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: 60%; height: 1px; background: linear-gradient(90deg, transparent, var(--orange), transparent); }
+    .header-center { text-align: center; }
+    .title { font-size: 32px; font-weight: 700; letter-spacing: 4px; background: linear-gradient(180deg, #FFFFFF 30%, var(--orange) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .subtitle { font-size: 12px; color: var(--text-muted); letter-spacing: 2px; margin-top: 2px; }
+    .header-side { display: flex; align-items: center; gap: 24px; min-width: 400px; }
+    .header-side.right { justify-content: flex-end; }
+    .metric-item { display: flex; align-items: baseline; gap: 6px; }
+    .metric-label { font-size: 12px; color: var(--text-secondary); }
+    .num-orange { font-size: 22px; }
+    .clock { font-size: 16px; color: var(--orange-light); font-family: 'DIN', monospace; font-weight: 600; min-width: 220px; text-align: right; }
+
+    .device-panel { display: flex; flex-direction: column; }
+    .panel-count { font-size: 12px; color: var(--text-muted); margin-left: auto; }
+    .device-list { display: flex; flex-direction: column; gap: 10px; height: 100%; overflow-y: auto; }
+    .device-card { background: var(--bg-panel-light); border-left: 3px solid var(--text-muted); border-radius: 4px; padding: 12px; transition: all 0.3s; }
+    .device-card.running { border-left-color: var(--status-running); }
+    .device-card.idle { border-left-color: var(--status-idle); }
+    .device-card.warning { border-left-color: var(--status-warning); }
+    .device-card.error { border-left-color: var(--status-error); background: rgba(255, 51, 51, 0.05); }
+    .device-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .device-name-row { display: flex; align-items: center; gap: 8px; }
+    .device-name { font-size: 14px; color: var(--text-primary); font-weight: 500; }
+    .device-id { font-size: 11px; color: var(--text-muted); font-family: monospace; }
+    .device-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
+    .metric { display: flex; align-items: center; gap: 6px; }
+    .m-label { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+    .m-value { font-size: 14px; color: var(--text-secondary); font-family: 'DIN', monospace; }
+    .util-bar { flex: 1; height: 14px; background: rgba(255,255,255,0.06); border-radius: 7px; position: relative; overflow: hidden; }
+    .util-fill { height: 100%; background: linear-gradient(90deg, var(--orange), var(--orange-light)); border-radius: 7px; transition: width 0.5s ease; }
+    .util-text { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); font-size: 11px; color: var(--text-primary); z-index: 1; }
+
+    .chart { width: 100%; height: 100%; min-height: 180px; }
+    .panel-unit { font-size: 12px; color: var(--text-muted); margin-left: auto; }
+
+    .workshop-panel { position: relative; }
+    .canvas-container { width: 100%; height: 100%; min-height: 280px; }
+    .device-labels { position: absolute; top: 42px; left: 0; width: 100%; height: calc(100% - 42px); pointer-events: none; }
+    .label-3d { position: absolute; transform: translate(-50%, -100%); background: rgba(20,20,20,0.85); border: 1px solid var(--border-color); border-radius: 4px; padding: 4px 8px; white-space: nowrap; display: flex; flex-direction: column; align-items: center; }
+    .label-3d.running { border-color: var(--status-running); }
+    .label-3d.idle { border-color: var(--status-idle); }
+    .label-3d.warning { border-color: var(--status-warning); }
+    .label-3d.error { border-color: var(--status-error); }
+    .l3d-name { font-size: 12px; color: var(--text-primary); }
+    .l3d-status { font-size: 11px; color: var(--text-muted); }
+    .legend { display: flex; gap: 12px; margin-left: auto; }
+    .legend-item { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-secondary); }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .dot.running { background: var(--status-running); }
+    .dot.idle { background: var(--status-idle); }
+    .dot.warning { background: var(--status-warning); }
+    .dot.error { background: var(--status-error); }
+
+    .alert-count { margin-left: auto; padding: 2px 10px; background: rgba(255,51,51,0.15); border: 1px solid var(--status-error); border-radius: 10px; font-size: 12px; color: var(--status-error); font-weight: 600; }
+    .alert-list { display: flex; flex-direction: column; gap: 8px; height: 100%; overflow-y: auto; }
+    .alert-item { display: flex; gap: 10px; padding: 10px; background: var(--bg-panel-light); border-radius: 4px; border-left: 3px solid var(--text-muted); }
+    .alert-item.warning { border-left-color: var(--status-warning); background: rgba(255,154,0,0.05); }
+    .alert-item.error { border-left-color: var(--status-error); background: rgba(255,51,51,0.05); }
+    .alert-icon { padding-top: 2px; }
+    .alert-content { flex: 1; }
+    .alert-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    .alert-device { font-size: 13px; color: var(--text-primary); font-weight: 500; }
+    .alert-time { font-size: 11px; color: var(--text-muted); font-family: monospace; }
+    .alert-msg { font-size: 12px; color: var(--text-secondary); }
+    .no-alert { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--status-running); font-size: 14px; }
+    .alert-enter-active { transition: all 0.4s ease; }
+    .alert-enter-from { opacity: 0; transform: translateX(20px); }
+    .alert-leave-active { transition: all 0.3s ease; }
+    .alert-leave-to { opacity: 0; transform: translateX(-20px); }
+
+    .modal-overlay { position: fixed; top: 0; left: 0; width: 1920px; height: 1080px; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 9999; }
+    .modal-box { width: 420px; background: var(--bg-panel); border: 2px solid var(--border-color); border-radius: 8px; overflow: hidden; box-shadow: 0 0 40px rgba(0,0,0,0.5); }
+    .modal-box.error { border-color: var(--status-error); box-shadow: 0 0 40px rgba(255,51,51,0.3); }
+    .modal-box.warning { border-color: var(--status-warning); box-shadow: 0 0 40px rgba(255,154,0,0.2); }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border-color); background: linear-gradient(90deg, rgba(255,107,0,0.05), transparent); }
+    .modal-title-row { display: flex; align-items: center; gap: 10px; }
+    .modal-title { font-size: 16px; font-weight: 600; color: var(--orange); }
+    .modal-close { background: none; border: none; color: var(--text-muted); font-size: 22px; cursor: pointer; padding: 0 4px; line-height: 1; }
+    .modal-close:hover { color: var(--text-primary); }
+    .modal-body { padding: 20px; }
+    .modal-info-row { display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .info-label { width: 80px; font-size: 13px; color: var(--text-muted); }
+    .info-value { font-size: 14px; color: var(--text-primary); }
+    .info-value.mono { font-family: 'DIN', monospace; }
+    .level-badge { padding: 2px 12px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+    .level-badge.error { background: rgba(255,51,51,0.15); color: var(--status-error); border: 1px solid var(--status-error); }
+    .level-badge.warning { background: rgba(255,154,0,0.15); color: var(--status-warning); border: 1px solid var(--status-warning); }
+    .modal-footer { padding: 16px 20px; display: flex; justify-content: flex-end; }
+    .btn-confirm { padding: 8px 28px; background: var(--orange); border: none; border-radius: 4px; color: #fff; font-size: 14px; cursor: pointer; transition: opacity 0.2s; }
+    .btn-confirm:hover { opacity: 0.85; }
+    .modal-enter-active { transition: all 0.3s ease; }
+    .modal-enter-from { opacity: 0; }
+    .modal-enter-from .modal-box { transform: scale(0.9) translateY(-20px); }
+    .modal-leave-active { transition: all 0.2s ease; }
+    .modal-leave-to { opacity: 0; }
+    .modal-leave-to .modal-box { transform: scale(0.95); }
+  </style>
+</head>
+<body>
+<div id="app">
+  <div class="dashboard">
+    <div class="header">
+      <div class="header-side left">
+        <span class="metric-item"><span class="metric-label">设备在线</span><span class="num-green num-orange">{{ overview.deviceOnline }}</span><span class="metric-label">/ {{ overview.deviceTotal }}</span></span>
+        <span class="metric-item"><span class="metric-label">告警</span><span :class="['num-orange', overview.alertCount > 0 ? 'num-red' : 'num-green']">{{ overview.alertCount }}</span></span>
+      </div>
+      <div class="header-center">
+        <h1 class="title">智能制造产线监控大屏</h1>
+        <div class="subtitle">INDUSTRIAL PRODUCTION LINE MONITORING SYSTEM</div>
+      </div>
+      <div class="header-side right">
+        <span class="metric-item"><span class="metric-label">总产量</span><span class="num-orange">{{ overview.totalOutput }}</span><span class="metric-label">件</span></span>
+        <span class="metric-item"><span class="metric-label">良率</span><span class="num-green num-orange">{{ overview.yieldRate }}%</span></span>
+        <span class="clock">{{ currentTime }}</span>
+      </div>
+    </div>
+    <div class="dashboard-body">
+      <div class="col-left">
+        <div class="panel device-panel flex-1">
+          <div class="corner-tl"></div><div class="corner-tr"></div><div class="corner-bl"></div><div class="corner-br"></div>
+          <div class="panel-header"><span class="panel-title">设备运行状态</span><span class="panel-count">共 {{ devices.length }} 台</span></div>
+          <div class="panel-body">
+            <div class="device-list">
+              <div v-for="d in devices" :key="d.id" class="device-card" :class="d.status">
+                <div class="device-top">
+                  <div class="device-name-row"><span class="status-dot" :class="d.status"></span><span class="device-name">{{ d.name }}</span></div>
+                  <span class="device-id">{{ d.id }}</span>
+                </div>
+                <div class="device-metrics">
+                  <div class="metric"><span class="m-label">温度</span><span class="m-value" :class="{ num_red: d.temperature > 70 }">{{ d.temperature }}°C</span></div>
+                  <div class="metric"><span class="m-label">转速</span><span class="m-value">{{ d.speed }} rpm</span></div>
+                  <div class="metric"><span class="m-label">产量</span><span class="m-value num-orange">{{ d.output }}</span></div>
+                  <div class="metric"><span class="m-label">利用率</span><div class="util-bar"><div class="util-fill" :style="{ width: d.utilization + '%' }"></div><span class="util-text">{{ d.utilization }}%</span></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="panel flex-1">
+          <div class="corner-tl"></div><div class="corner-tr"></div><div class="corner-bl"></div><div class="corner-br"></div>
+          <div class="panel-header"><span class="panel-title">OEE 综合效率</span></div>
+          <div class="panel-body"><div ref="oeeRef" class="chart"></div></div>
+        </div>
+      </div>
+      <div class="col-center">
+        <div class="panel workshop-panel flex-2">
+          <div class="corner-tl"></div><div class="corner-tr"></div><div class="corner-bl"></div><div class="corner-br"></div>
+          <div class="panel-header">
+            <span class="panel-title">3D 车间布局</span>
+            <span class="legend">
+              <span class="legend-item"><i class="dot running"></i>运行</span>
+              <span class="legend-item"><i class="dot idle"></i>待机</span>
+              <span class="legend-item"><i class="dot warning"></i>预警</span>
+              <span class="legend-item"><i class="dot error"></i>故障</span>
+            </span>
+          </div>
+          <div class="panel-body">
+            <div ref="threeRef" class="canvas-container"></div>
+          </div>
+        </div>
+        <div class="panel flex-1">
+          <div class="corner-tl"></div><div class="corner-tr"></div><div class="corner-bl"></div><div class="corner-br"></div>
+          <div class="panel-header"><span class="panel-title">产线实时产量趋势</span><span class="panel-unit">单位：件</span></div>
+          <div class="panel-body"><div ref="trendRef" class="chart"></div></div>
+        </div>
+      </div>
+      <div class="col-right">
+        <div class="panel flex-1">
+          <div class="corner-tl"></div><div class="corner-tr"></div><div class="corner-bl"></div><div class="corner-br"></div>
+          <div class="panel-header"><span class="panel-title">质量分析雷达</span></div>
+          <div class="panel-body"><div ref="radarRef" class="chart"></div></div>
+        </div>
+        <div class="panel flex-1">
+          <div class="corner-tl"></div><div class="corner-tr"></div><div class="corner-bl"></div><div class="corner-br"></div>
+          <div class="panel-header"><span class="panel-title">缺陷类型分布</span><span class="panel-unit">单位：件</span></div>
+          <div class="panel-body"><div ref="defectRef" class="chart"></div></div>
+        </div>
+        <div class="panel flex-1">
+          <div class="corner-tl"></div><div class="corner-tr"></div><div class="corner-bl"></div><div class="corner-br"></div>
+          <div class="panel-header">
+            <span class="panel-title">实时告警通知</span>
+            <span v-if="alerts.length" class="alert-count blink">{{ alerts.length }}</span>
+          </div>
+          <div class="panel-body">
+            <div class="alert-list">
+              <div v-for="a in alerts" :key="a.id" class="alert-item" :class="a.level">
+                <div class="alert-icon"><span class="status-dot" :class="a.level"></span></div>
+                <div class="alert-content">
+                  <div class="alert-top"><span class="alert-device">{{ a.deviceName }}</span><span class="alert-time">{{ a.timestamp }}</span></div>
+                  <div class="alert-msg"><span :class="a.level === 'error' ? 'num-red' : 'num-yellow'">[{{ a.level === 'error' ? '故障' : '预警' }}]</span> {{ a.message }}</div>
+                </div>
+              </div>
+              <div v-if="alerts.length === 0" class="no-alert"><span>所有设备运行正常</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <transition name="modal">
+      <div v-if="currentAlert" class="modal-overlay" @click="currentAlert = null">
+        <div class="modal-box" :class="currentAlert.level" @click.stop>
+          <div class="modal-header">
+            <div class="modal-title-row"><span class="status-dot blink" :class="currentAlert.level"></span><span class="modal-title">{{ currentAlert.level === 'error' ? '设备故障告警' : '设备预警通知' }}</span></div>
+            <button class="modal-close" @click="currentAlert = null">×</button>
+          </div>
+          <div class="modal-body">
+            <div class="modal-info-row"><span class="info-label">设备名称</span><span class="info-value">{{ currentAlert.deviceName }}</span></div>
+            <div class="modal-info-row"><span class="info-label">设备编号</span><span class="info-value mono">{{ currentAlert.deviceId }}</span></div>
+            <div class="modal-info-row"><span class="info-label">告警内容</span><span class="info-value" :class="currentAlert.level === 'error' ? 'num-red' : 'num-yellow'">{{ currentAlert.message }}</span></div>
+            <div class="modal-info-row"><span class="info-label">告警时间</span><span class="info-value mono">{{ currentAlert.timestamp }}</span></div>
+            <div class="modal-info-row"><span class="info-label">告警等级</span><span class="info-value"><span class="level-badge" :class="currentAlert.level">{{ currentAlert.level === 'error' ? '紧急' : '一般' }}</span></span></div>
+          </div>
+          <div class="modal-footer"><button class="btn-confirm" @click="currentAlert = null">确认</button></div>
+        </div>
+      </div>
+    </transition>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "vue": "https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.esm-browser.js",
+    "echarts": "https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.esm.min.js",
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+<script type="module">
+import { createApp, ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import * as echarts from 'echarts'
+import * as THREE from 'three'
+
+const DEVICE_NAMES = ['CNC加工中心-01', '自动化装配线-02', '焊接机器人-03', '智能检测站-04']
+const rand = (min, max, dec = 0) => parseFloat((Math.random() * (max - min) + min).toFixed(dec))
+const clamp = (v, min, max) => Math.max(min, Math.min(max, v))
+
+function pickStatus() {
+  const r = Math.random()
+  if (r < 0.65) return 'running'
+  if (r < 0.8) return 'idle'
+  if (r < 0.93) return 'warning'
+  return 'error'
+}
+
+function genDevices() {
+  return DEVICE_NAMES.map((name, i) => {
+    const status = pickStatus()
+    return {
+      id: `D${String(i+1).padStart(2,'0')}`, name, status,
+      temperature: rand(35, 85, 1), speed: status === 'error' ? 0 : rand(800, 3600),
+      output: rand(120, 500),
+      utilization: status === 'running' ? rand(75, 98, 1) : status === 'idle' ? rand(0, 30, 1) : rand(30, 70, 1)
+    }
+  })
+}
+
+function genAlerts(devices) {
+  const msgs = { warning: ['温度偏高', '振动异常', '润滑不足', '能耗超限'], error: ['设备停机', '急停触发', '通讯中断', '故障代码 E-204'] }
+  return devices.filter(d => d.status === 'warning' || d.status === 'error').map(d => ({
+    id: `A${Date.now()}_${d.id}`, deviceId: d.id, deviceName: d.name,
+    level: d.status === 'error' ? 'error' : 'warning',
+    message: msgs[d.status === 'error' ? 'error' : 'warning'][Math.floor(Math.random() * 4)],
+    timestamp: new Date().toLocaleTimeString('zh-CN', { hour12: false })
+  }))
+}
+
+function genProduction() {
+  const now = new Date(), points = []
+  for (let i = 11; i >= 0; i--) {
+    const t = new Date(now.getTime() - i * 5 * 60 * 1000)
+    points.push({ time: `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`, planned: rand(200, 260), actual: rand(150, 250) })
+  }
+  return points
+}
+
+function genQuality() {
+  return { indicators: ['合格率','一次通过率','稳定性','效率','安全性','良品率'],
+    values: [rand(90,99,1),rand(80,95,1),rand(75,92,1),rand(70,90,1),rand(85,98,1),rand(88,99,1)],
+    targets: [98,92,88,85,95,96] }
+}
+
+function genDefects() {
+  return [{type:'尺寸偏差',count:rand(3,15)},{type:'表面划痕',count:rand(2,12)},{type:'装配缺件',count:rand(1,8)},{type:'焊接缺陷',count:rand(1,10)},{type:'功能异常',count:rand(0,6)}]
+}
+
+function genOverview(devices, alerts) {
+  return {
+    totalOutput: devices.reduce((s,d) => s + d.output, 0),
+    yieldRate: rand(92, 99, 1), oee: rand(65, 88, 1),
+    alertCount: alerts.length,
+    deviceOnline: devices.filter(d => d.status === 'running').length,
+    deviceTotal: devices.length
+  }
+}
+
+let audioCtx = null
+function playAlertSound(level) {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+    if (audioCtx.state === 'suspended') audioCtx.resume()
+    const now = audioCtx.currentTime
+    if (level === 'error') {
+      for (let i = 0; i < 3; i++) {
+        const osc = audioCtx.createOscillator(), gain = audioCtx.createGain()
+        osc.type = 'square'; osc.frequency.value = 880
+        gain.gain.setValueAtTime(0, now + i*0.3)
+        gain.gain.linearRampToValueAtTime(0.3, now + i*0.3 + 0.02)
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i*0.3 + 0.22)
+        osc.connect(gain); gain.connect(audioCtx.destination)
+        osc.start(now + i*0.3); osc.stop(now + i*0.3 + 0.25)
+      }
+    } else {
+      for (let i = 0; i < 2; i++) {
+        const osc = audioCtx.createOscillator(), gain = audioCtx.createGain()
+        osc.type = 'sine'; osc.frequency.value = 440
+        gain.gain.setValueAtTime(0, now + i*0.4)
+        gain.gain.linearRampToValueAtTime(0.2, now + i*0.4 + 0.03)
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i*0.4 + 0.32)
+        osc.connect(gain); gain.connect(audioCtx.destination)
+        osc.start(now + i*0.4); osc.stop(now + i*0.4 + 0.35)
+      }
+    }
+  } catch(e) { console.warn('Audio failed:', e) }
+}
+
+const statusColors = { running: 0x00ff88, idle: 0xffd700, warning: 0xff9a00, error: 0xff3333 }
+
+createApp({
+  setup() {
+    const devices = ref(genDevices())
+    const alerts = ref(genAlerts(devices.value))
+    const production = ref(genProduction())
+    const quality = ref(genQuality())
+    const defects = ref(genDefects())
+    const overview = ref(genOverview(devices.value, alerts.value))
+    const currentAlert = ref(null)
+    const currentTime = ref('')
+    const oeeRef = ref(null), trendRef = ref(null), radarRef = ref(null), defectRef = ref(null), threeRef = ref(null)
+
+    let oeeChart, trendChart, radarChart, defectChart
+    let scene, camera, renderer, animationId, machineMeshes = []
+
+    function updateClock() {
+      const n = new Date()
+      const wk = ['日','一','二','三','四','五','六'][n.getDay()]
+      currentTime.value = `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')} 周${wk} ${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}:${String(n.getSeconds()).padStart(2,'0')}`
+    }
+
+    function updateScale() {
+      const sw = window.innerWidth, sh = window.innerHeight
+      const scale = Math.min(sw / 1920, sh / 1080)
+      const app = document.getElementById('app')
+      if (app) { app.style.transform = `scale(${scale})` }
+    }
+
+    function tickDevices() {
+      const newDevices = devices.value.map(d => {
+        const temp = clamp(d.temperature + rand(-3, 3, 1), 25, 95)
+        const speed = d.status === 'error' ? 0 : clamp(d.speed + rand(-200, 200), 400, 4000)
+        const output = d.status === 'error' ? d.output : clamp(d.output + rand(-15, 15), 50, 600)
+        const util = d.status === 'running' ? clamp(d.utilization + rand(-3, 3, 1), 60, 99) : d.utilization
+        return { ...d, temperature: temp, speed, output, utilization: util }
+      })
+      if (Math.random() < 0.08) {
+        const idx = Math.floor(Math.random() * newDevices.length)
+        const r = Math.random()
+        newDevices[idx].status = r < 0.5 ? 'warning' : r < 0.8 ? 'running' : 'error'
+        if (newDevices[idx].status === 'error') newDevices[idx].speed = 0
+      }
+      const newAlerts = genAlerts(newDevices)
+      devices.value = newDevices
+      alerts.value = newAlerts
+      overview.value = genOverview(newDevices, newAlerts)
+
+      newAlerts.forEach(a => {
+        const now = Date.now()
+        if (now - lastAlertTime > 30000) {
+          const errorAlert = newAlerts.find(a => a.level === 'error')
+          const target = errorAlert || newAlerts.find(a => a.level === 'warning')
+          if (target && (target.level === 'error' || Math.random() < 0.3)) {
+            currentAlert.value = target
+            playAlertSound(target.level)
+            lastAlertTime = now
+          }
+        }
+      })
+      update3DColors()
+    }
+
+    function tickProduction() {
+      const newPoint = genProduction().slice(-1)[0]
+      production.value = [...production.value.slice(1), newPoint]
+      quality.value = genQuality()
+      defects.value = genDefects()
+      renderCharts()
+    }
+
+    function renderOee() {
+      if (!oeeRef.value) return
+      if (!oeeChart) oeeChart = echarts.init(oeeRef.value)
+      oeeChart.setOption({
+        series: [
+          { type: 'gauge', center: ['50%','60%'], radius: '80%', startAngle: 200, endAngle: -20, min: 0, max: 100,
+            progress: { show: true, width: 14, itemStyle: { color: new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'#FF3333'},{offset:0.5,color:'#FFD700'},{offset:1,color:'#00FF88'}]) } },
+            axisLine: { lineStyle: { width: 14, color: [[1,'rgba(255,255,255,0.08)']] } },
+            pointer: { width: 4, length: '60%', itemStyle: { color: '#FF6B00' } },
+            anchor: { show: true, size: 8, itemStyle: { color: '#FF6B00' } },
+            axisTick: { show: false },
+            splitLine: { length: 8, lineStyle: { color: 'rgba(255,255,255,0.15)' } },
+            axisLabel: { color: '#666', fontSize: 10, distance: 4 },
+            detail: { valueAnimation: true, formatter: '{value}%', color: '#FF6B00', fontSize: 28, fontWeight: 700, offsetCenter: [0, '20%'] },
+            title: { offsetCenter: [0, '45%'], color: '#888', fontSize: 12 },
+            data: [{ value: overview.value.oee, name: 'OEE' }]
+          },
+          { type: 'gauge', center: ['50%','60%'], radius: '55%', startAngle: 200, endAngle: -20, min: 0, max: 100,
+            progress: { show: true, width: 8, itemStyle: { color: '#00FF88' } },
+            axisLine: { lineStyle: { width: 8, color: [[1,'rgba(255,255,255,0.05)']] } },
+            pointer: { show: false }, axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false },
+            detail: { formatter: '良率 {value}%', color: '#00FF88', fontSize: 13, offsetCenter: [0, '70%'] },
+            data: [{ value: overview.value.yieldRate }]
+          }
+        ]
+      })
+    }
+
+    function renderTrend() {
+      if (!trendRef.value) return
+      if (!trendChart) trendChart = echarts.init(trendRef.value)
+      trendChart.setOption({
+        tooltip: { trigger: 'axis', backgroundColor: 'rgba(20,20,20,0.9)', borderColor: '#FF6B00', textStyle: { color: '#fff' } },
+        legend: { data: ['计划产量','实际产量'], right: 10, top: 5, textStyle: { color: '#aaa', fontSize: 12 } },
+        grid: { top: 40, left: 50, right: 20, bottom: 30 },
+        xAxis: { type: 'category', data: production.value.map(p => p.time), axisLabel: { color: '#888', fontSize: 11 }, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } } },
+        yAxis: { type: 'value', axisLabel: { color: '#888', fontSize: 11 }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } } },
+        series: [
+          { name: '计划产量', type: 'line', smooth: true, symbol: 'none', lineStyle: { color: 'rgba(255,107,0,0.4)', width: 2, type: 'dashed' }, itemStyle: { color: 'rgba(255,107,0,0.4)' }, areaStyle: { color: 'rgba(255,107,0,0.03)' }, data: production.value.map(p => p.planned) },
+          { name: '实际产量', type: 'line', smooth: true, symbol: 'circle', symbolSize: 6, lineStyle: { color: '#FF6B00', width: 3 }, itemStyle: { color: '#FF6B00', borderColor: '#fff', borderWidth: 1 }, areaStyle: { color: new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(255,107,0,0.25)'},{offset:1,color:'rgba(255,107,0,0.01)'}]) }, data: production.value.map(p => p.actual) }
+        ]
+      })
+    }
+
+    function renderRadar() {
+      if (!radarRef.value) return
+      if (!radarChart) radarChart = echarts.init(radarRef.value)
+      radarChart.setOption({
+        tooltip: { backgroundColor: 'rgba(20,20,20,0.9)', borderColor: '#FF6B00', textStyle: { color: '#fff' } },
+        legend: { data: ['实际','目标'], right: 10, top: 5, textStyle: { color: '#aaa', fontSize: 12 } },
+        radar: { center: ['50%','55%'], radius: '65%', splitNumber: 4, axisName: { color: '#999', fontSize: 12 }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }, splitArea: { areaStyle: { color: ['transparent','rgba(255,255,255,0.02)'] } }, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } }, indicator: quality.value.indicators.map(n => ({ name: n, max: 100 })) },
+        series: [
+          { type: 'radar', symbol: 'circle', symbolSize: 5, lineStyle: { color: '#FF6B00', width: 2 }, itemStyle: { color: '#FF6B00' }, areaStyle: { color: 'rgba(255,107,0,0.15)' }, data: [{ value: quality.value.values, name: '实际' }] },
+          { type: 'radar', symbol: 'none', lineStyle: { color: '#00FF88', width: 1.5, type: 'dashed' }, itemStyle: { color: '#00FF88' }, areaStyle: { color: 'transparent' }, data: [{ value: quality.value.targets, name: '目标' }] }
+        ]
+      })
+    }
+
+    function renderDefect() {
+      if (!defectRef.value) return
+      if (!defectChart) defectChart = echarts.init(defectRef.value)
+      const data = defects.value
+      defectChart.setOption({
+        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, backgroundColor: 'rgba(20,20,20,0.9)', borderColor: '#FF6B00', textStyle: { color: '#fff' } },
+        grid: { top: 20, left: 40, right: 20, bottom: 30 },
+        xAxis: { type: 'category', data: data.map(d => d.type), axisLabel: { color: '#888', fontSize: 11 }, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } } },
+        yAxis: { type: 'value', axisLabel: { color: '#888', fontSize: 11 }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } } },
+        series: [{ type: 'bar', barWidth: '40%', data: data.map((d,i) => ({ value: d.count, itemStyle: { color: new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color: i===0?'#FF6B00':'rgba(255,107,0,0.7)'},{offset:1,color:'rgba(255,107,0,0.1)'}]), borderRadius: [3,3,0,0] } })), label: { show: true, position: 'top', color: '#FF6B00', fontSize: 12, fontWeight: 600 } }]
+      })
+    }
+
+    function renderCharts() { renderOee(); renderTrend(); renderRadar(); renderDefect() }
+
+    function init3D() {
+      if (!threeRef.value) return
+      const w = threeRef.value.clientWidth, h = threeRef.value.clientHeight
+      scene = new THREE.Scene()
+      scene.background = new THREE.Color(0x0d0d0d)
+      scene.fog = new THREE.Fog(0x0d0d0d, 30, 80)
+      camera = new THREE.PerspectiveCamera(45, w/h, 0.1, 200)
+      camera.position.set(18, 20, 18)
+      camera.lookAt(0, 0, 0)
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+      renderer.setSize(w, h)
+      renderer.setPixelRatio(window.devicePixelRatio)
+      threeRef.value.appendChild(renderer.domElement)
+
+      scene.add(new THREE.AmbientLight(0xffffff, 0.4))
+      const dl1 = new THREE.DirectionalLight(0xff8844, 0.6); dl1.position.set(10,20,10); scene.add(dl1)
+      const dl2 = new THREE.DirectionalLight(0x4488ff, 0.3); dl2.position.set(-10,10,-10); scene.add(dl2)
+
+      const floor = new THREE.Mesh(new THREE.PlaneGeometry(28,28), new THREE.MeshStandardMaterial({ color: 0x1a1a1a, metalness: 0.8, roughness: 0.4 }))
+      floor.rotation.x = -Math.PI/2; scene.add(floor)
+
+      const grid = new THREE.GridHelper(28, 14, 0xff6b00, 0x333333)
+      grid.position.y = 0.01; grid.material.opacity = 0.3; grid.material.transparent = true; scene.add(grid)
+
+      const wallMat = new THREE.MeshStandardMaterial({ color: 0x222222, transparent: true, opacity: 0.15, side: THREE.DoubleSide })
+      const w1 = new THREE.Mesh(new THREE.BoxGeometry(28,6,0.2), wallMat); w1.position.set(0,3,-14); scene.add(w1)
+      const w2 = w1.clone(); w2.position.set(0,3,14); scene.add(w2)
+      const w3 = new THREE.Mesh(new THREE.BoxGeometry(0.2,6,28), wallMat); w3.position.set(-14,3,0); scene.add(w3)
+      const w4 = w3.clone(); w4.position.set(14,3,0); scene.add(w4)
+
+      const positions = [{x:-8,z:-6},{x:8,z:-6},{x:-8,z:6},{x:8,z:6}]
+      machineMeshes = []
+      devices.value.forEach((d, i) => {
+        const pos = positions[i % positions.length]
+        const geo = new THREE.BoxGeometry(4, 3, 4)
+        const mat = new THREE.MeshStandardMaterial({ color: statusColors[d.status], metalness: 0.6, roughness: 0.3, emissive: statusColors[d.status], emissiveIntensity: d.status==='error'?0.5:d.status==='warning'?0.3:0.1 })
+        const mesh = new THREE.Mesh(geo, mat)
+        mesh.position.set(pos.x, 1.5, pos.z)
+        scene.add(mesh)
+        machineMeshes.push(mesh)
+        const base = new THREE.Mesh(new THREE.BoxGeometry(4.5,0.3,4.5), new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.8 }))
+        base.position.set(pos.x, 0.15, pos.z); scene.add(base)
+        if (i < devices.value.length - 1) {
+          const np = positions[(i+1) % positions.length]
+          const belt = new THREE.Mesh(new THREE.BoxGeometry(Math.abs(np.x-pos.x)||0.5, 0.3, Math.abs(np.z-pos.z)||0.5), new THREE.MeshStandardMaterial({ color: 0x553311, metalness: 0.5 }))
+          belt.position.set((pos.x+np.x)/2, 0.15, (pos.z+np.z)/2); scene.add(belt)
+        }
+      })
+      animate3D()
+    }
+
+    function update3DColors() {
+      devices.value.forEach((d, i) => {
+        if (machineMeshes[i]) {
+          const mat = machineMeshes[i].material
+          mat.color.setHex(statusColors[d.status])
+          mat.emissive.setHex(statusColors[d.status])
+          mat.emissiveIntensity = d.status==='error'?0.5:d.status==='warning'?0.3:0.1
+        }
+      })
+    }
+
+    let angle = 0
+    function animate3D() {
+      animationId = requestAnimationFrame(animate3D)
+      angle += 0.002
+      camera.position.x = Math.cos(angle) * 22
+      camera.position.z = Math.sin(angle) * 22
+      camera.position.y = 18
+      camera.lookAt(0, 1, 0)
+      machineMeshes.forEach((mesh, i) => { mesh.position.y = 1.5 + Math.sin(angle * 3 + i) * 0.05 })
+      renderer.render(scene, camera)
+    }
+
+    let timer5, timer15, clockTimer, lastAlertTime = 0
+    onMounted(async () => {
+      updateScale()
+      updateClock()
+      clockTimer = setInterval(updateClock, 1000)
+      window.addEventListener('resize', updateScale)
+      await nextTick()
+      renderCharts()
+      init3D()
+      timer5 = setInterval(tickDevices, 10000)
+      timer15 = setInterval(tickProduction, 30000)
+    })
+    onUnmounted(() => {
+      clearInterval(timer5); clearInterval(timer15); clearInterval(clockTimer)
+      cancelAnimationFrame(animationId)
+      oeeChart?.dispose(); trendChart?.dispose(); radarChart?.dispose(); defectChart?.dispose()
+      renderer?.dispose()
+    })
+
+    return { devices, alerts, production, quality, defects, overview, currentAlert, currentTime, oeeRef, trendRef, radarRef, defectRef, threeRef }
+  }
+}).mount('#app')
+</script>
+</body>
+</html>
