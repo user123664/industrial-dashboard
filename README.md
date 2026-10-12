@@ -67,7 +67,8 @@ npm run dev
 ### 方式二：预览版（无需安装）
 
 直接用浏览器打开 `preview/index.html` 即可。
-![Uploading image.png…]()
+<img width="2588" height="1452" alt="屏幕截图 2026-10-12 091856" src="https://github.com/user-attachments/assets/f9123026-aa10-4c00-87c3-6e736a59ca24" />
+
 
 
 ## 简历描述参考
